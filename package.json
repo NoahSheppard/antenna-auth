@@ -1,0 +1,29 @@
+{
+  "name": "antenna-auth",
+  "version": "1.0.0",
+  "description": "Authentication for Antenna",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NoahSheppard/antenna-auth.git"
+  },
+  "keywords": [
+    "antenna",
+    "auth"
+  ],
+  "author": "Noah Sheppard",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/NoahSheppard/antenna-auth/issues"
+  },
+  "homepage": "https://github.com/NoahSheppard/antenna-auth#readme",
+  "dependencies": {
+    "express": "^5.1.0",
+    "nodemon": "^3.1.10",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7"
+  }
+}
