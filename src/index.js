@@ -1,5 +1,5 @@
 const express = require('express');
-const { initdb } = require('./utils/db');
+const { initdb, addUser, getUsers } = require('./utils/db');
 
 const app = express();
 app.use(express.json());
@@ -15,20 +15,26 @@ app.get('/', (req, res) => {
     res.send('Hello, World!');
 });
 
-app.get('/initdb', (req, res) => {
-    db.run(`CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL UNIQUE,
-        password TEXT NOT NULL,
-        email TEXT NOT NULL UNIQUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP    
-    )`, (err) => {
+app.get('/adduser', (req, res) => {
+    const { username, password, email } = req.query;
+    if (!username || !password || !email) {
+        return res.status(400).send("Missing email, password or username!");
+    }
+    addUser(db, username, password, email, (err, status) => {
         if (err) {
-            console.error('Error initializing database:', err.message);
-            res.status(500).send('Error initializing database');
+            res.status(500).send("Hey, sorry! Couldn't. Here's why!: " + err.message);
         } else {
-            console.log('Database initialized successfully');
-            res.send('Database initialized successfully');
+            res.status(200).send(`User ${username} added successfully!`);
+        }
+    })
+});
+
+app.get('/getusers', (req, res) => {
+    getUsers(db, (err, rows) => {
+        if (err) {
+            res.status(500).send('Error retrieving users: ' + err.message);
+        } else {
+            res.status(200).send(`Users: ${JSON.stringify(rows)}`);
         }
     });
 });
