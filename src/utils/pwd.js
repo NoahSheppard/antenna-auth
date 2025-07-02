@@ -9,7 +9,12 @@ function verifyPassword(password, hashedPassword) {
     return hash === hashedPassword;
 }
 
+const genRanHex = size => {
+    return crypto.randomBytes(size).toString('hex');
+}
+
 module.exports = {
     hashPassword, 
-    verifyPassword
+    verifyPassword,
+    genRanHex
 }
