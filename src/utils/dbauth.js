@@ -1,5 +1,5 @@
 const sqlite3 = require('sqlite3').verbose();
-const {hashPassword, verifyPassword} = require('./pwd');
+const {hashPassword} = require('./pwd');
 
 /***
  * @returns {sqlite3.Databse} - returns the sqlite3 database instance after initializing it. 
