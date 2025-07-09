@@ -10,7 +10,7 @@ function initdb() {
         if (err) {
             console.log('Error opening database ' + err.message);
         } else {
-            console.log('Connected to the users database.');
+            //console.log('Connected to the users database.');
         }
     })
     db.run(`CREATE TABLE IF NOT EXISTS users (
@@ -23,7 +23,7 @@ function initdb() {
         if (err) {
             console.error('Error initializing database:', err.message);
         } else {
-            console.log('Database initialized successfully');
+            //console.log('Database initialized successfully');
         }
     });
 
@@ -39,7 +39,7 @@ function initdb() {
         if (err) {
             console.error(`Error initializing user_keys table: ${err.message}`);
         } else {
-            console.log('user_keys table initialized successfully');
+            //console.log('user_keys table initialized successfully');
         }
     });
 

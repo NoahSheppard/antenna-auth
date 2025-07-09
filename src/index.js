@@ -1,4 +1,6 @@
 const express = require('express');
+const { createServer } = require('http');
+const { Server } = require('socket.io');
 const { 
     initdb, 
     addUser, 
@@ -10,14 +12,113 @@ const {
     getUserIdByUsername 
 } = require('./utils/dbauth');
 const { genRanHex } = require('./utils/pwd');
+const dbmsg = require('./utils/dbmsg');
+const { 
+    addMessageToChannel, 
+    getUserChannels, 
+    createChannel, 
+    isUserInChannel 
+} = require('./utils/dbmsg');
 
 const app = express();
+
+const server = createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: "*", // fix in prod
+        methods: ["GET", "POST"]
+    }
+});
+
 app.use(express.json());
 const PORT = 7910;
 
 const db = initdb();
+const msgdb = dbmsg.initdb();
 
-app.listen(PORT, () => {
+const userSockets = new Map(); // userId -> socketId
+
+io.on('connection', (socket) => {
+    console.log("User connected: " + socket.id);
+
+    socket.on('authenticate', (data) => {
+        const { userId, keyValue } = data;
+
+        verifyUserKey(db, keyValue, (err, row) => {
+            if (err || !row) {
+                socket.emit('auth_error', 'Invalid Authentication');
+                return;
+            }
+
+            userSockets.set(userId, socket.id);
+            socket.userId = userId;
+
+            console.log(`User ${userId} authenticated`);
+            socket.emit('authenticated', { userId });
+        });
+    });
+
+    socket.on('join_channel', (channelId) => {
+        const userId = socket.userId;
+
+        if (!userId) {
+            socket.emit('error', 'not authenticated');
+            return;
+        }
+
+        isUserInChannel(msgdb, channelId, userId, (err, isInChannel, errorMessage) => {
+            if (err) {
+                socket.emit('error', 'Database error: ' + err.message);
+                return;
+            }
+            console.log(`User ${userId} is in channel ${channelId}: ${isInChannel}`);
+            if (!isInChannel) {
+                socket.emit('error', errorMessage || 'You are not a member of this channel');
+                return;
+            }
+
+            socket.join(`channel_${channelId}`);
+            console.log(`User ${userId} joined channel ${channelId}`);
+            socket.emit('joined_channel', { channelId });
+        })
+    })
+
+    socket.on('send_message', (data) => {
+        const {channelId, message } = data;
+        const senderId = socket.userId;
+
+        if (!senderId) {
+            socket.emit('error', 'Not authenticated');
+            return;
+        }
+
+        addMessageToChannel(msgdb, channelId, senderId, message, (err, messageId) => {
+            if (err) {
+                socket.emit('error', 'Failed to send message: ' + err.message);
+                return;
+            }
+
+            const messageData = {
+                id: messageId,
+                channelId,
+                senderId,
+                message,
+                timestamp: new Date().toISOString()
+            }
+
+            io.to(`channel_${channelId}`).emit('new_message', messageData);
+        });
+    });
+
+    socket.on('disconnect', () => {
+        if (socket.userId) {
+            userSockets.delete(socket.userId);
+            console.log(`User ${socket.userId} disconnected`);
+        }
+    });
+});
+
+server.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });
 
@@ -146,3 +247,53 @@ app.get('/deactivatekey', (req, res) => {
 });
 
 // Messaging endpoints
+
+app.get('/getchannels', (req, res) => {
+    const { userId, keyValue } = req.query;
+    if (!userId || !keyValue) {
+        return res.status(400).send("Missing userId or keyValue!");
+    }
+
+    verifyUserKey(db, keyValue, (err, row) => {
+        if (err || !row) {
+            return res.status(401).send("Invalid authentication!");
+        }
+
+        getUserChannels(msgdb, userId, (err, channels) => {
+            if (err) {
+                res.status(500).send("Error retrieving channels: " + err.message);
+            } else {
+                res.status(200).json(channels);
+            }
+        });
+    });
+});
+
+app.post('/createchannel', (req, res) => {
+    const {userIds, keyValue, userId} = req.body;
+    if (!userIds || !keyValue || !userId) {
+        return res.status(400).send("Missing required fields: userIds, keyValue, or userId!");
+    }
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+        return res.status(400).send("userIds must be a non-empty array!");
+    }
+
+    if (!userIds.includes(userId)) {
+        return res.status(400).send("You must be in the channel you are creating! Debug: " + userIds + " vs " + userId);
+    }
+
+    verifyUserKey(db, keyValue, (err, row) => {
+        if (err || !row) {
+            return res.status(401).send("Invalid authentication!");
+        }
+
+        createChannel(msgdb, userIds, (err, channelId) => {
+            if (err) {
+                res.status(500).send("Error creating channel: " + err.message);
+            } else {
+                res.status(200).json({channelId});
+            }
+        })
+    })
+});
