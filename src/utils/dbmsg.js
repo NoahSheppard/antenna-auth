@@ -58,7 +58,7 @@ function addMessageToChannel(db, channelId, senderId, message, callback) {
 }
 
 function getUserChannels(db, userId, callback) {
-    db.all(`SELECT * FROM channels WHERE users LIKE ?`, [`%${userId}%`], (err, rows) => {
+    db.all(`SELECT id, users FROM channels WHERE users LIKE ?`, [`%${userId}%`], (err, rows) => {
         if (err) {
             return callback(err);
         }
@@ -71,9 +71,31 @@ function getUserChannels(db, userId, callback) {
             } catch (e) {
                 return false;
             }
-        });
+        }).map(row => ({
+            id: row.id,
+            users: JSON.parse(row.users)
+        }));
 
         callback(null, userChannels);
+    });
+}
+
+function getMessagesInChannel(db, channelId, callback) {
+    db.all(`SELECT messages FROM channels WHERE id = ?`, [channelId], (err, rows) => {
+        if (err) {
+            return callback(err);
+        }
+        if (rows.length === 0) {
+            return callback(null, []);
+        }
+
+        let messages = [];
+        try {
+            messages = JSON.parse(rows[0].messages);
+        } catch (e) {
+            return callback(new Error('Invalid messages format in channel'));
+        }
+        callback(null, messages);
     });
 }
 
@@ -116,5 +138,6 @@ module.exports = {
     addMessageToChannel,
     getUserChannels,
     createChannel,
-    isUserInChannel
+    isUserInChannel,
+    getMessagesInChannel
 }

@@ -17,7 +17,8 @@ const {
     addMessageToChannel, 
     getUserChannels, 
     createChannel, 
-    isUserInChannel 
+    isUserInChannel,
+    getMessagesInChannel 
 } = require('./utils/dbmsg');
 
 const app = express();
@@ -186,10 +187,12 @@ app.get('/getid', (req, res) => {
 });
 
 app.get('/idtoname', (req, res) => {
+    console.log("recieved request for idtoname")
     const userId = req.query.id;
     if (!userId) {
         return res.status(400).send("Missing userId!");
     }
+    console.log("userId: " + userId);
     const sql = `SELECT username FROM users WHERE id = ?`;
     db.get(sql, [userId], (err, row) => {
         if (err) {
@@ -270,6 +273,9 @@ app.get('/deactivatekey', (req, res) => {
 
 // Messaging endpoints
 
+/* ?userId, ?keyValue
+https://localhost:7910/getchannels?userId=1&keyValue=3600ti6za7
+*/
 app.get('/getchannels', (req, res) => {
     const { userId, keyValue } = req.query;
     if (!userId || !keyValue) {
@@ -291,6 +297,10 @@ app.get('/getchannels', (req, res) => {
     });
 });
 
+/*?userIds, keyValue, userId
+ curl -X POST "http://localhost:7910/createchannel" \
+  -H "Content-Type: application/json" \
+  -d '{"userIds": [1, 2], "keyValue": "3600ti6za7", "userId": 1}' */
 app.post('/createchannel', (req, res) => {
     const {userIds, keyValue, userId} = req.body;
     if (!userIds || !keyValue || !userId) {
@@ -318,4 +328,34 @@ app.post('/createchannel', (req, res) => {
             }
         })
     })
+});
+
+app.get('/getchannelmessages', (req, res) => {
+    const {channelId, userId, keyValue} = req.query;
+    if (!channelId || !userId || !keyValue) {
+        return res.status(400).send("Missing channelId, userId, or keyValue!");
+    }
+
+    verifyUserKey(db, keyValue, (err, row) => {
+        if (err || !row) {
+            return res.status(401).send("Invalid authentication!");
+        }
+
+        isUserInChannel(msgdb, channelId, userId, (err, isInChannel, errorMessage) => {
+            if (err) {
+                return res.status(500).send("Database error: " + err.message);
+            }
+            
+            if (!isInChannel) {
+                return res.status(403).send(errorMessage || 'You are not a member of this channel');
+            }
+
+            getMessagesInChannel(msgdb, channelId, (err, messages) => {
+                if (err) {
+                    return res.status(500).send("Error retrieving messages: " + err.message);
+                }
+                res.status(200).json(messages);
+            });
+        });
+    });
 });
