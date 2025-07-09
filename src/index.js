@@ -38,6 +38,10 @@ const msgdb = dbmsg.initdb();
 
 const userSockets = new Map(); // userId -> socketId
 
+const RED = '\x1b[31m';
+const GREEN = '\x1b[32m';
+const RESET = '\x1b[0m'; // Resets text formatting to default
+
 io.on('connection', (socket) => {
     console.log("User connected: " + socket.id);
 
@@ -71,14 +75,15 @@ io.on('connection', (socket) => {
                 socket.emit('error', 'Database error: ' + err.message);
                 return;
             }
-            console.log(`User ${userId} is in channel ${channelId}: ${isInChannel}`);
+            
+            //console.log(`User ${userId} is in channel ${channelId}: ${isInChannel ? GREEN : RED}${isInChannel}${RESET}`);
+            
             if (!isInChannel) {
                 socket.emit('error', errorMessage || 'You are not a member of this channel');
                 return;
             }
 
             socket.join(`channel_${channelId}`);
-            console.log(`User ${userId} joined channel ${channelId}`);
             socket.emit('joined_channel', { channelId });
         })
     })
@@ -86,28 +91,45 @@ io.on('connection', (socket) => {
     socket.on('send_message', (data) => {
         const {channelId, message } = data;
         const senderId = socket.userId;
+        //console.log(`User ${senderId} sending message to channel ${channelId}: ${message}`);
 
         if (!senderId) {
             socket.emit('error', 'Not authenticated');
             return;
         }
 
-        addMessageToChannel(msgdb, channelId, senderId, message, (err, messageId) => {
+        isUserInChannel(msgdb, channelId, senderId, (err, isInChannel, errorMessage) => {
             if (err) {
-                socket.emit('error', 'Failed to send message: ' + err.message);
+                socket.emit('error', 'Database error: ' + err.message);
                 return;
             }
+            
+            //console.log(`User ${senderId} is in channel ${channelId}: ${isInChannel ? GREEN : RED}${isInChannel}${RESET}`);
+            
+            if (!isInChannel) {
+                socket.emit('error', errorMessage || 'You are not a member of this channel');
+            } else {
+                console.log(`Sending message to channel ${channelId} from user ${senderId}: ${message}`);
+                addMessageToChannel(msgdb, channelId, senderId, message, (err, messageId) => {
+                    if (err) {
+                        socket.emit('error', 'Failed to send message: ' + err.message);
+                        return;
+                    }
 
-            const messageData = {
-                id: messageId,
-                channelId,
-                senderId,
-                message,
-                timestamp: new Date().toISOString()
+                    const messageData = {
+                        id: messageId,
+                        channelId,
+                        senderId,
+                        message,
+                        timestamp: new Date().toISOString()
+                    }
+
+                    io.to(`channel_${channelId}`).emit('new_message', messageData);
+                    console.log(`Message sent to channel ${channelId}: ${message}`);
+                });
             }
-
-            io.to(`channel_${channelId}`).emit('new_message', messageData);
-        });
+            //console.log(`User ${senderId} is in channel ${channelId}: ${isInChannel ? GREEN : RED}${isInChannel}${RESET}`);
+        })
     });
 
     socket.on('disconnect', () => {

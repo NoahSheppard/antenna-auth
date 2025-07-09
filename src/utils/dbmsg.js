@@ -67,7 +67,7 @@ function getUserChannels(db, userId, callback) {
             try {
                 const users = JSON.parse(row.users);
                 //console.log('User ID: ' + userId);
-                return users.includes(userId);
+                return users.includes(parseInt(userId));
             } catch (e) {
                 return false;
             }
@@ -102,8 +102,8 @@ function isUserInChannel(db, channelId, userId, callback) {
         try {
             const channelUsers = JSON.parse(row.users);
             //console.log('User ID: ' + userId);
-            const isInChannel = channelUsers.includes(userId);
-            console.log('[dbmsg.js] Is user in channel: ' + isInChannel);
+            const isInChannel = channelUsers.includes(parseInt(userId));
+            //console.log('[dbmsg.js] Is user in channel: ' + isInChannel);
             callback(null, isInChannel);
         } catch (e) {
             callback(null, false, 'Invalid channel data response: ' + e.message);
