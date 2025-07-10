@@ -9,7 +9,8 @@ const {
     getUserKeys,
     verifyUserKey,
     deactivateUserKey,
-    getUserIdByUsername 
+    getUserIdByUsername,
+    verifyUsernameAndPassword 
 } = require('./utils/dbauth');
 const { genRanHex } = require('./utils/pwd');
 const dbmsg = require('./utils/dbmsg');
@@ -20,6 +21,7 @@ const {
     isUserInChannel,
     getMessagesInChannel 
 } = require('./utils/dbmsg');
+const { verify } = require('crypto');
 
 const app = express();
 
@@ -42,6 +44,13 @@ const userSockets = new Map(); // userId -> socketId
 const RED = '\x1b[31m';
 const GREEN = '\x1b[32m';
 const RESET = '\x1b[0m'; // Resets text formatting to default
+
+const jsonError = [
+    {"errorCode": 0, "errorMessage": "Missing URL parameters"}, 
+    {"errorCode": 1, "errorMessage": "Incorrect authentication (username, password and/or token)"},
+    {"errorCode": 2, "errorMessage": "Information not found in database i.e. user, channel, message(s) not found."},
+    {"errorCode": -1, "errorMessage": "Internal server error - check logs"}
+];
 
 io.on('connection', (socket) => {
     console.log("User connected: " + socket.id);
@@ -149,6 +158,58 @@ app.get('/', (req, res) => {
     res.send('Hello, World!');
 });
 
+// Authencitaion
+/**
+ * @param {string} username to authenticate
+ * @param {string} password to authenticate
+ * @returnsOnError {jsonError} -1, 0, 1, 2
+ * @returns {json} {userId, token} - userId is the ID of the user and token is the authentication token.
+ * @example /auth?username=A&password=B -> {userId: x, token: y}
+ */
+app.get('/auth', (req, res) => {
+    const { username, password } = req.query;
+    if (!username || !password) {
+        return res.status(400).json(jsonError[0]); // Missing URL parameters
+    }
+
+    getUserIdByUsername(db, username, (err, userId) => {
+        if (err) {
+            console.log("[/auth] Error retrieving user ID: " + err.message);
+            return res.status(500).json(jsonError[-1]); // Internal server error
+        }
+        if (!userId) {
+            return res.status(404).json(jsonError[2]); // User not found
+        }
+        verifyUsernameAndPassword(db, username, password, userId, (err, token) => {
+            if (err) {
+                console.log("[/auth] Error verifying username and password: " + err.message);
+                return res.status(500).json(jsonError[-1]); // Error verifying username and password
+            }
+            if (!token) {
+                return res.status(401).json(jsonError[1]); // Invalid username or password
+            }
+            console.log(`User ${username} authenticated successfully with ID ${userId}`);
+            res.status(200).json({ userId, token });
+        });
+    });
+});
+
+app.get('/verifykey', (req, res) => {
+    const keyValue = req.query.keyValue;
+    if (!keyValue) {
+        return res.status(400).send("Missing keyValue!");
+    }
+    verifyUserKey(db, keyValue, (err, row) => {
+        if (err) {
+            res.status(500).send('Error verifying user key: ' + err.message);
+        } else if (row) {
+            res.status(200).send(`Key is valid for user: ${row.user_id}`);
+        } else {
+            res.status(404).send('Key not found or inactive ' + row);
+        }
+    });
+});
+
 // Database Endpoints
 app.get('/adduser', (req, res) => {
     const { username, password, email } = req.query;
@@ -164,17 +225,7 @@ app.get('/adduser', (req, res) => {
     })
 });
 
-app.get('/getusers', (req, res) => {
-    getUsers(db, (err, rows) => {
-        if (err) {
-            res.status(500).send('Error retrieving users: ' + err.message);
-        } else {
-            res.status(200).send(`Users: ${JSON.stringify(rows)}`);
-        }
-    });
-});
-
-app.get('/getid', (req, res) => {
+app.get('/nametoid', (req, res) => {
     getUserIdByUsername(db, req.query.username, (err, userId) => {
         if (err) {
             res.status(500).send('Error retrieving user ID: ' + err.message);
@@ -201,72 +252,6 @@ app.get('/idtoname', (req, res) => {
             res.status(200).send(`Username: ${row.username}`);
         } else {
             res.status(404).send('User not found');
-        }
-    });
-});
-
-app.get('/addkey', (req, res) => {
-    const { userId } = req.query;
-    if (!userId) {
-        return res.status(400).send("Missing userId!");
-    }
-    
-    const keyValue = genRanHex(16);
-
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30);
-
-    addUserKey(db, userId, keyValue, expiresAt, (err, status) => {
-        if (err) {
-            res.status(500).send("Error adding user key: " + err.message);
-        } else {
-            res.status(200).send(`Key ${keyValue} added successfully!`);
-        }
-    });
-});
-
-app.get('/getkeys', (req, res) => {
-    const userId = req.query.userId;
-    if (!userId) {
-        return res.status(400).send("Missing userId!");
-    }
-    getUserKeys(db, userId, (err, rows) => {
-        if (err) {
-            res.status(500).send('Error retrieving user keys: ' + err.message);
-        } else {
-            res.status(200).send(`User Keys: ${JSON.stringify(rows)}`);
-        }
-    });
-});
-
-app.get('/verifykey', (req, res) => {
-    const keyValue = req.query.keyValue;
-    if (!keyValue) {
-        return res.status(400).send("Missing keyValue!");
-    }
-    verifyUserKey(db, keyValue, (err, row) => {
-        if (err) {
-            res.status(500).send('Error verifying user key: ' + err.message);
-        } else if (row) {
-            res.status(200).send(`Key is valid for user: ${row.user_id}`);
-        } else {
-            res.status(404).send('Key not found or inactive ' + row);
-        }
-    });
-});
-
-app.get('/deactivatekey', (req, res) => {
-    const keyValue = req.query.keyValue;
-    if (!keyValue) {
-        return res.status(400).send("Missing keyValue!");
-    }
-    deactivateUserKey(db, keyValue, (err, result) => {
-        if (err) {
-            res.status(500).send('Error deactivating user key: ' + err.message);
-        } else if (result.changes > 0) {
-            res.status(200).send(`Key ${keyValue} deactivated successfully!`);
-        } else {
-            res.status(404).send('Key not found or already inactive');
         }
     });
 });

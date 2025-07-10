@@ -1,5 +1,5 @@
 const sqlite3 = require('sqlite3').verbose();
-const {hashPassword} = require('./pwd');
+const {hashPassword, genRanHex} = require('./pwd');
 
 /***
  * @returns {sqlite3.Databse} - returns the sqlite3 database instance after initializing it. 
@@ -64,6 +64,46 @@ function addUser(db, username, password, email, callback) {
             callback(null, 200);
         }
     })
+}
+
+function verifyUsernameAndPassword(db, username, password, userId, callback) {
+    db.all("SELECT * FROM users WHERE username = ? AND password = ?", [username, hashPassword(password)], (err, rows) => {
+        if (err) {
+            console.log("Error verifying username and password: " + err.message);
+            return callback(err, null);
+        } 
+        
+        if (rows.length === 0) {
+            return callback(null, null);
+        }
+
+        const keyValue = genRanHex(16);
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 30);
+    
+        getUserKeys(db, userId, (err, keyRows) => {
+            if (err) {
+                console.log('Error retrieving user keys: ' + err.message);
+                return callback(err, null);
+            }
+            
+            console.log(`User Keys: ${JSON.stringify(keyRows)}`);
+            
+            if (keyRows.length === 0) {
+                // No existing keys, create a new one
+                addUserKey(db, userId, keyValue, expiresAt, (err, status) => {
+                    if (err) {
+                        return callback(err, null);
+                    } else {
+                        return callback(null, keyValue);
+                    }
+                });
+            } else {
+                // Return existing key
+                return callback(null, keyRows[0].key_value);
+            }
+        });
+    });
 }
 
 /**
@@ -154,5 +194,6 @@ module.exports = {
     getUserKeys,
     verifyUserKey,
     deactivateUserKey,
-    getUserIdByUsername
+    getUserIdByUsername,
+    verifyUsernameAndPassword
 };
