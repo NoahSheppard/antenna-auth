@@ -87,8 +87,6 @@ function verifyUsernameAndPassword(db, username, password, userId, callback) {
                 return callback(err, null);
             }
             
-            console.log(`User Keys: ${JSON.stringify(keyRows)}`);
-            
             if (keyRows.length === 0) {
                 // No existing keys, create a new one
                 addUserKey(db, userId, keyValue, expiresAt, (err, status) => {
@@ -181,7 +179,7 @@ function getUserIdByUsername(db, username, callback) {
         } else if (row) {
             callback(null, row.id);
         } else {
-            callback(new Error("User not found"), null);
+            callback(null, null);
         }
     }); 
 }

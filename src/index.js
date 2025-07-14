@@ -160,14 +160,19 @@ app.get('/', (req, res) => {
 
 // Authencitaion
 /**
+ * @route POST /auth
+ * Authenticates a user based on the provided username and password.
  * @param {string} username to authenticate
  * @param {string} password to authenticate
- * @returnsOnError {jsonError} -1, 0, 1, 2
- * @returns {json} {userId, token} - userId is the ID of the user and token is the authentication token.
+ * @returns {Object} 200 - {userId, token}
+ * @returns {Object} 400 - {"errorCode": 0, "errorMessage": "Missing URL parameters"}
+ * @returns {Object} 401 - {"errorCode": 1, "errorMessage": "Incorrect authentication (username, password and/or token)"}
+ * @returns {Object} 404 - {"errorCode": 2, "errorMessage": "Information not found in database i.e. user, channel, message(s) not found."}
+ * @returns {Object} 500 - {"errorCode": -1, "errorMessage": "Internal server error - check logs"}
  * @example /auth?username=A&password=B -> {userId: x, token: y}
  */
-app.get('/auth', (req, res) => {
-    const { username, password } = req.query;
+app.post('/auth', (req, res) => {
+    const { username, password } = req.body;
     if (!username || !password) {
         return res.status(400).json(jsonError[0]); // Missing URL parameters
     }
@@ -188,14 +193,14 @@ app.get('/auth', (req, res) => {
             if (!token) {
                 return res.status(401).json(jsonError[1]); // Invalid username or password
             }
-            console.log(`User ${username} authenticated successfully with ID ${userId}`);
+            //console.log(`User ${username} authenticated successfully with ID ${userId}`);
             res.status(200).json({ userId, token });
         });
     });
 });
 
-app.get('/verifykey', (req, res) => {
-    const keyValue = req.query.keyValue;
+app.post('/verifykey', (req, res) => {
+    const {keyValue} = req.body;
     if (!keyValue) {
         return res.status(400).send("Missing keyValue!");
     }
@@ -211,8 +216,8 @@ app.get('/verifykey', (req, res) => {
 });
 
 // Database Endpoints
-app.get('/adduser', (req, res) => {
-    const { username, password, email } = req.query;
+app.post('/adduser', (req, res) => {
+    const { username, password, email } = req.body;
     if (!username || !password || !email) {
         return res.status(400).send("Missing email, password or username!");
     }
